@@ -205,7 +205,11 @@ pub fn named_sleeper(value: i32, ms: u64) -> i32 {
     // TODO: Create a thread builder with name "sleeper"
     // TODO: Spawn a thread that sleeps for `ms` milliseconds and returns `value`
     // TODO: Join the thread and return the value
-    todo!()
+    let sleeper = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(ms));
+        value
+    });
+    sleeper.join().unwrap()
 }
 
 thread_local! {
@@ -218,9 +222,35 @@ thread_local! {
 /// Each call to `increment` should increase the thread‑local count by 1 and return the new value.
 ///
 /// Hint: Use `THREAD_COUNT.with(|cell| { ... })` to access the thread‑local variable.
+
+
 pub fn increment_thread_local() -> usize {
-    // TODO: Use THREAD_COUNT.with to increment and return the new count
-    todo!()
+    use std::cell::RefCell;
+    //RefCell 是一种“内部可变性“工具
+
+    //thread_local是一个系统自带的宏，编译是会被展开为每个线程一份变量
+    thread_local! {
+        static THREAD_COUNT: RefCell<usize> = RefCell::new(0);  
+        //static 是在整个程序生命周期中都存在的全局变量，默认不可变
+        //所以只能使用 RefCell 来修改这个全局变量
+              
+    }
+
+    //因为这个 THREAD_COUNT 是每个线程一份的，然而这个名字确实全局的，
+    //  因此需要确定当前线程的 THREAD_LOCAL，with 强制访问当前线程的
+    THREAD_COUNT.with(|cell| {
+        //因为没有使用 move，也没有使用&mut 所以这里是不可变引用，所以
+        //  cell是 &RefCell 类型的不可变引用
+
+        //因为传入的是不可变引用，因此下面需要使用borrow_mut来取得可变引用
+        //此时的 value 是 RefMut 类型，属于一种智能指针，可以修改里面的值
+        //可以当做 &mut usize来使用，因为是引用类型，需要使用 * 号进行解引用
+        let mut value = cell.borrow_mut();
+
+        *value += 1;
+        *value
+    })
+    
 }
 
 /// Spawn two threads using a **scoped thread** to compute the sum of two slices without moving ownership.
@@ -236,7 +266,44 @@ pub fn scoped_slice_sum(a: &[i32], b: &[i32]) -> (i32, i32) {
     // TODO: Use thread::scope to spawn two threads
     // TODO: Each thread sums its slice
     // TODO: Wait for both threads and return the results
-    todo!()
+    //错误代码：
+    // let handle_1 = thread::scope(|a| {
+    //     let mut sum = 0;
+    //     for i in a.iter() {
+    //         sum += i;
+    //     }
+    //     sum
+    // });
+
+    // let handle_2 = thread::scope(|b| {
+    //     let mut sum = 0;
+    //     for i in b.iter() {
+    //         sum += i;
+    //     }
+    //     sum
+    // });
+
+    // (handle_1.join().unwrap(), handle_2.join().unwrap())
+
+    //thread::scope 不是创建线程，而是提供一个“安全借用环境”，
+    //  真正创建线程必须用 s.spawn(...)。
+
+    //s在这里相当于是一个线程创建器，一定要使用 s 进行线程的创建
+    //s 是用于创建“受作用域约束”的线程，scope 保证线程在离开作用域前一定执行完成
+    thread::scope(|s| {
+        let handle_1 = s.spawn(|| {
+            a.iter().sum()
+        });
+
+        let handle_2 = s.spawn(|| {
+            b.iter().sum()
+        });
+
+        (
+            handle_1.join().unwrap(),
+            handle_2.join().unwrap()
+        )
+    })
 }
 
 /// Handle a possible panic in a spawned thread.
@@ -253,7 +320,14 @@ pub fn scoped_slice_sum(a: &[i32], b: &[i32]) -> (i32, i32) {
 pub fn handle_panic(value: i32, should_panic: bool) -> Result<i32, ()> {
     // TODO: Spawn a thread that either panics or returns value
     // TODO: Join and map the result appropriately
-    todo!()
+    let handle = thread::spawn(move|| {
+        if should_panic {
+            Err(())
+        }else {
+            Ok(value)
+        }
+    });
+    handle.join().unwrap()
 }
 
 #[cfg(test)]
