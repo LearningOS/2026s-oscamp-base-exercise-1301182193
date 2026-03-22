@@ -157,7 +157,14 @@ pub fn double_in_thread(numbers: Vec<i32>) -> Vec<i32> {
     // TODO: Create a new thread to multiply each element of numbers by 2
     // Use thread::spawn and move closure
     // Use join().unwrap() to get result
-    todo!()
+    let handle = thread::spawn(move || {
+        numbers.iter().map(|x| x * 2).collect()
+        //map 用来对迭代器中的每个元素做“逐个转换”,	替代 for 循环修改
+
+        //先将 numbers 转换成迭代器，使用 map 将每个值 *2,
+        //  然后使用 collect()收集成新的 Vec
+    });
+    handle.join().unwrap()
 }
 
 /// Sum two vectors in parallel, returning a tuple of two sums.
@@ -167,7 +174,20 @@ pub fn double_in_thread(numbers: Vec<i32>) -> Vec<i32> {
 pub fn parallel_sum(a: Vec<i32>, b: Vec<i32>) -> (i32, i32) {
     // TODO: Create two threads to sum a and b respectively
     // Join both threads to get results
-    todo!()
+    //使用 move 时，变量的所有权移入子线程，防止数据竞争
+    //新建子线程时，应该尽量使用 move，防止外部的线程结束，数据释放导致
+    //  子线程内的变量产生悬垂引用
+    let handle_1 = thread::spawn(move || {
+        a.into_iter().sum()
+    });
+    //into_iter()会取得 Vec 的所有权，iter()不会
+    //使用 into_iter() 和 iter() 都可以，rust 会自动解引用
+    //不能直接对 Vec 使用 sum，Vec 没有实现这个方法，这是对于 Iterator 来说的
+
+    let handle_2 = thread::spawn(move || {
+        b.into_iter().sum()
+    });
+    (handle_1.join().unwrap(), handle_2.join().unwrap())
 }
 
 // ============================================================================
