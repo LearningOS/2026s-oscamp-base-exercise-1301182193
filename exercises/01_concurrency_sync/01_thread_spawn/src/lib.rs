@@ -322,12 +322,22 @@ pub fn handle_panic(value: i32, should_panic: bool) -> Result<i32, ()> {
     // TODO: Join and map the result appropriately
     let handle = thread::spawn(move|| {
         if should_panic {
-            Err(())
+            panic!("oops");
+            //子线程 panic 之后，只会杀死子线程，不会对主线程造成影响
+
         }else {
-            Ok(value)
+            value
         }
     });
-    handle.join().unwrap()
+
+    //handle.join的返回值是 Result<T，Box<dyn Any + Send>>
+    //join() 的 Ok 类型由线程返回值决定，
+    //而 Err 类型固定用于承载 panic 信息，
+    //因此形成 Result<T, Box<dyn Any + Send>>。
+    match handle.join() {
+        Ok(v) => Ok(v),
+        Err(_) => Err(()),
+    }
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@
 //! - `Arc<T>` atomic reference counting enables cross-thread sharing
 //! - `lock()` acquires the lock and accesses data
 
+
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -15,12 +16,76 @@ use std::thread;
 /// Returns the final counter value.
 ///
 /// Hint: Use `Arc<Mutex<usize>>` as the shared counter.
+
 pub fn concurrent_counter(n_threads: usize, count_per_thread: usize) -> usize {
-    // TODO: Create Arc<Mutex<usize>> with initial value 0
-    // TODO: Spawn n_threads threads
-    // TODO: In each thread, lock() and increment count_per_thread times
-    // TODO: Join all threads, return final value
-    todo!()
+    let mut count = Arc::new(Mutex::new(0));
+    //Arc 负责共享 count，Mutex 负责同步即加锁
+    //Arc 和 Mutex 是“拥有数据的容器类型”，必须通过 new 来构造它们内部的数据
+    //即 Mutex 新建的是一个可以带锁的值，而 Arc 新建的是一个可以共享的指针
+    //使用 Arc 需要使用 Arc::new(),使用 Mutex需要使用 Mutex::new()
+    //使用下面的都需要使用 new::来在堆上为变量分配内存
+    //     Box<T>       堆分配
+    //     Arc<T>       共享所有权
+    //     Mutex<T>     并发保护
+    //     RefCell<T>   内部可变性
+    //     Vec<T>      动态数组
+
+    let mut handles = vec![];
+    for _ in 0..n_threads {
+        let count = Arc::clone(&count);
+        //clone 得到的是一个新的 Arc（拥有所有权），而不是 &Arc
+
+        //使用 Arc::clone(&count) 
+        //  是为了防止 Arc::clone(count) 会直接转移 count 的所有权
+
+        //线程需要拥有数据，是因为线程可能比主线程更晚结束，主线程结束会释放变量
+        //  因此子线程需要拥有数据，防止资源被提前释放产生悬垂引用
+
+        //线程需要拥有数据，同时不能拿走变量的所有权，因此需要使用 Arc 智能指针来
+        //  共享变量。同时使用 clone 来共享变量，clone 之后还是指向同一个数据
+        //  只是多个 Arc 指针
+        let handle = thread::spawn(move || {
+            for i in 0..count_per_thread {
+                let mut guard = count.lock().unwrap();
+                *guard += 1;
+
+                //这是 count.lock()返回的类型
+                //  Result<MutexGuard<'_, T>, PoisonError<MutexGuard<'_, T>>>
+                //  只有当锁被污染，即某个线程在持有锁的时候 panic，
+                //  此时修改到一半，数据可能不安全，导致别的线程都无法使用锁
+
+                //match count.lock() {
+                //  Ok(guard) => { ... }
+                //  Err(poisoned) => {
+                //     let guard = poisoned.into_inner(); // 继续用
+                //  }
+                //这样可以恢复数据的访问权，恢复后的值是发生 panic 那一刻的数据，
+                //  即当前内存里的真实值（可能是半更新状态）
+            }
+
+                //count.lock() 返回的类型是 Result，所以需要 unwrap 取出里面的
+                //没有拿到锁的话，Mutex 不允许使用当前变量
+                //count.lock()尝试获取变量的锁，使得当前只允许我自己使用这个变量
+                //如果此时别人持有锁，当前线程会阻塞等待，直至这个锁被释放
+                //并不是忙等，不会持续占用 CPU
+                // 1. 尝试获取锁
+                // 2. 如果失败 → 线程挂起（sleep）
+                // 3. 等待操作系统唤醒
+                //在 Mutex 离开作用域之后，lock 会自动 drop
+                //使用 *号 是因为 count.lock() 返回的类型是
+        });
+        handles.push(handle);
+    }
+    //不能直接在 for 循环内使用 handle.join().unwrap()，这样需要线程 1 执行完毕后
+    //  才会执行线程 2 ，变成了并行操作了，这个线程的意义就没了，
+    //  统一join 可以保证线程并发
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    //
+    let result = *count.lock().unwrap();
+    result
 }
 
 /// Add elements to a shared vector concurrently using multiple threads.
@@ -29,10 +94,24 @@ pub fn concurrent_counter(n_threads: usize, count_per_thread: usize) -> usize {
 ///
 /// Hint: Use `Arc<Mutex<Vec<usize>>>`.
 pub fn concurrent_collect(n_threads: usize) -> Vec<usize> {
-    // TODO: Create Arc<Mutex<Vec<usize>>>
-    // TODO: Each thread pushes its own id
-    // TODO: After joining all threads, sort the result and return
-    todo!()
+    let res = Arc::new(Mutex::new(vec![]));
+    let mut handles = vec![];
+    //这里不能使用 _ 来代替 i，_ 是不使用的变的标记，既然标记了就不能再使用了
+    for i in 0..n_threads {
+        let res = Arc::clone(&res);
+        let handle = thread::spawn(move || {
+            let mut guard = res.lock().unwrap();
+            guard.push(i);
+        });
+
+        handles.push(handle);
+    }
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let mut result = res.lock().unwrap().clone();
+    result.sort();
+    result
 }
 
 #[cfg(test)]
