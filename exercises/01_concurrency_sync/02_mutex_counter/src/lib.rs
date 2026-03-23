@@ -102,6 +102,8 @@ pub fn concurrent_collect(n_threads: usize) -> Vec<usize> {
         let handle = thread::spawn(move || {
             let mut guard = res.lock().unwrap();
             guard.push(i);
+            //这里不需要使用 * 来解引用，是因为方法调用的时候，
+            //就自动调用 Deref 进行解引用，将其
         });
 
         handles.push(handle);
@@ -110,6 +112,10 @@ pub fn concurrent_collect(n_threads: usize) -> Vec<usize> {
         handle.join().unwrap();
     }
     let mut result = res.lock().unwrap().clone();
+    //lock().unwrap() 返回的是MutexGuard类型
+    //  因为当前的 MutexGuard 没有实现 clone 方法，但是实现了 Deref 方法
+    //  所以编译器会自动解引用，得到 &Vec 类型，&Vec 类型可以直接调用 clone 进行复制
+    //  此时得到的 result 就是 Vec<usize> 类型
     result.sort();
     result
 }
