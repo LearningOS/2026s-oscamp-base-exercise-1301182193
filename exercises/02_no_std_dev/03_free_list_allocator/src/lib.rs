@@ -1,7 +1,7 @@
 //! # Free-List Allocator
 //!
 //! Building on the bump allocator, implement a Free-List Allocator that supports memory reclamation.
-//!
+//!                 //bump allocator: 块分配器      //空闲列表分配器        //支持内存回收
 //! ## How It Works
 //!
 //! A Free-List Allocator uses a linked list to track all freed memory blocks.
@@ -29,15 +29,29 @@
 //! 2. Insert it at the head of free_list
 //!
 //! ## Key Concepts
-//!
+//!   intrusive：侵入式的
 //! - Intrusive linked list
 //! - `*mut T` read/write: `ptr.write(val)` / `ptr.read()`
 //! - Memory alignment checks
 
+
+//cfg = configuration（配置）
+//attr = attrbute(条件)
+
+
+// #![...]      整个 crate（文件级/模块级）
+// #[...]       紧跟的“一个项”（函数/struct/字段等）
+
+//cfg_attr = configuration attribute（带条件的属性）
 #![cfg_attr(not(test), no_std)]
+//这是Rust 编译属性配置，核心作用是：非测试环境下禁用标准库，测试环境下保留标准库。
+//cfg_attr(条件, 属性)：条件编译宏
+
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr::null_mut;
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 
 /// Free block header, stored at the beginning of each free memory block
 struct FreeBlock {
@@ -108,6 +122,37 @@ unsafe impl GlobalAlloc for FreeListAllocator {
         let size = layout.size().max(core::mem::size_of::<FreeBlock>());
         let align = layout.align().max(core::mem::align_of::<FreeBlock>());
 
+        let mut curr = self.free_list_head();
+        let mut prev_ptr: *mut FreeBlock = null_mut();
+
+        while curr.is_null() == false {
+            if (*curr).size >= size {
+                if prev_ptr.is_null() {
+                    self.set_free_list_head((*curr).next);
+                    return curr as *mut u8;
+                }else {
+                    (*prev_ptr).next = (*curr).next;
+                    return curr as *mut u8;
+                }
+            } else {
+                prev_ptr = curr;
+                curr = (*curr).next;
+            }
+        }
+
+        let current = self.bump_next.load(Ordering::SeqCst);
+        let aligned = (current + align - 1) &! (align - 1);
+
+        let end = aligned.saturating_add(size);
+
+        if end > self.heap_end {
+            return null_mut();
+        }
+
+        self.bump_next.store(end, Ordering::SeqCst);
+        
+        aligned as *mut u8
+
         // TODO: Step 1 — traverse free_list, find a suitable block (first-fit)
         //
         // Hints:
@@ -119,7 +164,6 @@ unsafe impl GlobalAlloc for FreeListAllocator {
         // TODO: Step 2 — no suitable block in free_list, allocate from bump region
         //
         // Same logic as 02_bump_allocator's alloc
-        todo!()
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -131,7 +175,10 @@ unsafe impl GlobalAlloc for FreeListAllocator {
         // 1. Cast ptr to *mut FreeBlock
         // 2. Write FreeBlock { size, next: current list head }
         // 3. Update free_list head to ptr
-        todo!()
+        let block = ptr as *mut FreeBlock;
+        (*block).size = size;
+        (*block).next = self.free_list_head();
+        self.set_free_list_head(block);
     }
 }
 
@@ -139,6 +186,9 @@ unsafe impl GlobalAlloc for FreeListAllocator {
 // Tests
 // ============================================================
 #[cfg(test)]
+//只有在“test 配置启用时”，这段代码才会被编译
+//test 模式 → 代码 被编译 + 可以运行
+//非 test 模式 → 代码 根本不存在（不会编译）
 mod tests {
     use super::*;
 
