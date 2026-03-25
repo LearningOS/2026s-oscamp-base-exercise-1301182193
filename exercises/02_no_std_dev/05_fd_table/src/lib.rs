@@ -49,6 +49,10 @@ pub trait File: Send + Sync {
 /// File descriptor table
 pub struct FdTable {
     fdtable: Vec<Option<Arc<dyn File>>>,
+    //Option: 可以用 Some 来标记 fd 已分配，None 表示未分配
+    //Arc： 使得可以有多个引用，使得多个线程可以拥有对于这个文件的引用
+    //dyn: 全称 dynamic 即多态，如果不用 dyn，rust 需要在编译时确定具体累型的大小，但是加入节点前无法知道，
+    //      因此Arc<dyn File> 表示某个实现了 File 这个 trait 的具体类型，但是 rust 并不知道是谁
     // TODO: Design the internal structure
     // Hint: use Vec<Option<Arc<dyn File>>>
     //       the index is the fd number, None means the fd is closed or unallocated
@@ -67,7 +71,6 @@ impl FdTable {
     ///
     /// Prefers reusing the smallest closed fd number; if no free slot, appends to the end.
     pub fn alloc(&mut self, file: Arc<dyn File>) -> usize {
-        // TODO
         for (i, slot) in self.fdtable.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(file);
@@ -85,6 +88,22 @@ impl FdTable {
         self.fdtable
             .get(fd)
             .and_then(|opt| opt.as_ref().cloned())
+        
+        //get 返回 Option<&Option<Arc<dyn File>>>
+        //  fd            返回
+        // 越界            None
+        // 有值            Some(&Option<…>)
+
+        //and_then的作用：如果是 Some(x) → 执行函数 f(x)
+        //               如果是 None → 直接返回 None
+
+        //as_ref 是把Option<T> 转换为 Option<&T>是借用，而不转移其所有权，
+        //如果直接操作，会使得｜T｜中的所有权发生转移，而 as_def 不拿走所有权，只借用里面的值
+
+        //cloned 是复制一个值（由类型决定怎么复制）
+        // 简单来说是一个语法糖 等价于 x.map(|v| v.clone())
+        // cloned() = 把引用里的值 clone 出来，变成拥有所有权的值
+
     }
 
     /// Close an fd. Returns true on success, false if the fd doesn't exist or is already closed.
