@@ -1,6 +1,8 @@
 //! # Memory Ordering and Synchronization
+//!                         //同步
 //!
 //! In this exercise, you will use correct memory ordering to implement thread synchronization primitives.
+//!                                                                                            //原语
 //!
 //! ## Key Concepts
 //! - `Ordering::Relaxed`: No synchronization guarantees
@@ -39,8 +41,9 @@ impl FlagChannel {
     /// - What Ordering should be used for writing ready? (ensuring data writes are visible to consumer)
     pub fn produce(&self, value: u32) {
         // TODO: Store data (choose appropriate Ordering)
+        self.data.store(value, Ordering::Release);
+        self.ready.store(true, Ordering::Release);
         // TODO: Set ready = true (choose appropriate Ordering so data writes complete before this)
-        todo!()
     }
 
     /// Consumer: spin-wait for ready flag, then read data.
@@ -50,8 +53,16 @@ impl FlagChannel {
     /// - What Ordering should be used for reading data?
     pub fn consume(&self) -> u32 {
         // TODO: Spin-wait for ready to become true (choose appropriate Ordering)
+        loop {
+            match self.ready.compare_exchange(true, false, Ordering::Release, Ordering::Acquire) {
+                Ok(_) => {
+                    self.ready.store(true, Ordering::Release);
+                    return self.data.load(Ordering::Acquire);
+                },
+                Err(_) => {}
+            }
+        }
         // TODO: Read data (choose appropriate Ordering)
-        todo!()
     }
 
     /// Reset channel state
@@ -83,13 +94,23 @@ impl OnceCell {
     pub fn init(&self, val: u32) -> bool {
         // TODO: Use compare_exchange to ensure initialization only once
         // Store value on success
-        todo!()
+        if self.initialized.load(Ordering::Acquire) == false {
+            self.initialized.store(true, Ordering::Release);
+            self.value.store(val, Ordering::Release);
+            return true;
+        }else {
+            return false;
+        }
     }
 
     /// Get value. Returns Some if initialized, otherwise None.
     pub fn get(&self) -> Option<u32> {
         // TODO: Check initialized flag, then read value
-        todo!()
+        if self.initialized.load(Ordering::Acquire) == true {
+            return Some(self.value.load(Ordering::Acquire));
+        }else {
+            return None;
+        }
     }
 }
 

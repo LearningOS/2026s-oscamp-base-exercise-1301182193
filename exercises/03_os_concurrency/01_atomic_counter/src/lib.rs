@@ -47,8 +47,19 @@ impl AtomicCounter {
     ///
     /// Hint: use `compare_exchange` with success ordering `Ordering::AcqRel` and failure ordering `Ordering::Acquire`
     pub fn compare_and_swap(&self, expected: u64, new_val: u64) -> Result<u64, u64> {
-        // TODO
         self.value.compare_exchange(expected, new_val, Ordering::AcqRel, Ordering::Acquire)
+        //失败的时候，不能使用 AcqRel内存序，因为失败的时候，没有 store 操作，不具备写的语义
+        //CAS 失败时没有发生写操作，不能用 Release / AcqRel，必须依赖“写“才能成立
+
+//         Ordering            强度              作用
+//          Relaxed            最弱         只保证原子性，不保证顺序
+//          Acquire            中           保证之后的读不会被重排到前面
+//          Release            中           保证之前的写不会被重排到后面
+//          AcqRel             中强          同时具备 Acquire + Release
+//          SeqCst             最强          全局一致顺序
+
+
+
     }
 
     /// Multiply the value atomically using a CAS loop.
@@ -67,7 +78,7 @@ impl AtomicCounter {
             let new = current * multiplier;
             match self.compare_and_swap(current, new) {
                 Ok(_) => return current,
-                Err(_) => return continue,
+                Err(_) => continue,
             }
         }
     }
