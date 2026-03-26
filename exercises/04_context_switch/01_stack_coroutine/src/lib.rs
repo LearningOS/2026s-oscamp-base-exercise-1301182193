@@ -125,8 +125,8 @@ pub fn alloc_stack() -> (Vec<u8>, usize) {
     let mut buf = vec![0u8; STACK_SIZE];
 
     let ptr = buf.as_mut_ptr() as usize;
-    let top = ptr - STACK_SIZE;
-    let top = (top - 15) &! 15;
+    let top = ptr + STACK_SIZE;
+    let top = (top + 15) &! 15;
 
     (buf, top)
 }
