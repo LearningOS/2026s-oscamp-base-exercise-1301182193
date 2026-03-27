@@ -58,7 +58,7 @@ const PPN_MASK: u64 = (1u64 << 44) - 1; // 44-bit PPN
 /// Hint: Shift PPN left by PPN_SHIFT bits, then OR with flags.
 pub fn make_pte(ppn: u64, flags: u64) -> u64 {
     // TODO: Construct page table entry using ppn and flags
-    todo!()
+    (ppn << PPN_SHIFT) | flags
 }
 
 /// Extract physical page number (PPN) from page table entry.
@@ -66,19 +66,23 @@ pub fn make_pte(ppn: u64, flags: u64) -> u64 {
 /// Hint: Right shift by PPN_SHIFT bits, then AND with PPN_MASK.
 pub fn extract_ppn(pte: u64) -> u64 {
     // TODO: Extract PPN from pte
-    todo!()
+    (pte >> PPN_SHIFT) & PPN_MASK
 }
 
 /// Extract flags (lower 8 bits) from page table entry.
 pub fn extract_flags(pte: u64) -> u64 {
     // TODO: Extract lower 8-bit flags
-    todo!()
+    pte & (!(PPN_MASK << PPN_SHIFT))
 }
 
 /// Check whether page table entry is valid (V bit set).
 pub fn is_valid(pte: u64) -> bool {
     // TODO: Check PTE_V
-    todo!()
+    if pte % 2 == 1 {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 /// Determine whether page table entry is a leaf PTE.
@@ -87,7 +91,14 @@ pub fn is_valid(pte: u64) -> bool {
 /// pointing to the final physical page. Otherwise it points to next-level page table.
 pub fn is_leaf(pte: u64) -> bool {
     // TODO: Check if any of R/W/X bits is set
-    todo!()
+    let mut temp: u64 = pte >> 1;
+    for _ in 0..3 {
+        if temp % 2 == 1 {
+            return true;
+        }
+        temp >>= 1;
+    }
+    false
 }
 
 /// Check whether page table entry permits the requested access based on given permissions.
@@ -99,7 +110,39 @@ pub fn is_leaf(pte: u64) -> bool {
 /// Returns true iff: PTE is valid, and each requested permission is satisfied.
 pub fn check_permission(pte: u64, read: bool, write: bool, execute: bool) -> bool {
     // TODO: First check if valid, then check each requested permission
-    todo!()
+    let res = pte % 2;
+    if res == 0 {
+        return false;
+    }
+    let mut temp = pte / 2;
+    let mut read_1 = false;
+    let mut write_1 = false;
+    let mut execute_1 = false;
+    if temp % 2 == 1 {
+        read_1 = true;
+    }else {
+        read_1 = false;
+    }
+
+    temp /= 2;
+    if temp % 2 == 1 {
+        write_1 = true;
+    }else {
+        write_1 = false;
+    }
+
+    temp /= 2;
+    if temp % 2 == 1 {
+        execute_1 = true;
+    }else {
+        execute_1 = false;
+    }
+    //let res = read_1 | write_1 | execute_1;
+    if (read == true && read_1 == false) || (write == true && write_1 == false) || (execute == true && execute_1 == false) {
+        return false;
+    }else {
+        return true;
+    }
 }
 
 #[cfg(test)]
