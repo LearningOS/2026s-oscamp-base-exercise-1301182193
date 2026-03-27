@@ -63,8 +63,8 @@ impl TaskContext {
     /// - Set `sp = stack_top` with 16-byte alignment (RISC-V ABI requires 16-byte aligned stack at function entry).
     /// - Leave `s0`–`s11` zero; they will be loaded on switch.
     pub fn init(&mut self, stack_top: usize, entry: usize) {
-        self.ra = entry;
-        self.sp = (stack_top + 15) &! (15);
+        self.ra = entry as u64;
+        self.sp = ((stack_top + 15) &! 15) as u64;
     }
 }
 
@@ -73,48 +73,44 @@ impl TaskContext {
 /// In asm: store `sp`, `ra`, `s0`–`s11` to `[a0]` (old), load from `[a1]` (new), zero `a0`/`a1` so we do not leak pointers into the new context, then `ret`.
 ///
 /// Must be `#[unsafe(naked)]` to prevent the compiler from generating a prologue/epilogue
-use core::arch::asm;
 #[unsafe(naked)]
-pub unsafe fn switch_context(old: &mut TaskContext, new: &TaskContext) {
-    unsafe {
-        asm!(
-            "sd sp, 0(a0)",
-            "sd ra, 8(a0)",
-            "sd s0, 16(a0)",
-            "sd s1, 24(a0)",
-            "sd s2, 32(a0)",
-            "sd s3, 40(a0)",
-            "sd s4, 48(a0)",
-            "sd s5, 56(a0)",
-            "sd s6, 64(a0)",
-            "sd s7, 72(a0)",
-            "sd s8, 80(a0)",
-            "sd s9, 88(a0)",
-            "sd s10, 96(a0)",
-            "sd s11, 104(a0)",
+pub unsafe extern "C" fn switch_context(old: &mut TaskContext, new: &TaskContext) {
+    core::arch::naked_asm!(
+        "sd sp, 0(a0)",
+        "sd ra, 8(a0)",
+        "sd s0, 16(a0)",
+        "sd s1, 24(a0)",
+        "sd s2, 32(a0)",
+        "sd s3, 40(a0)",
+        "sd s4, 48(a0)",
+        "sd s5, 56(a0)",
+        "sd s6, 64(a0)",
+        "sd s7, 72(a0)",
+        "sd s8, 80(a0)",
+        "sd s9, 88(a0)",
+        "sd s10, 96(a0)",
+        "sd s11, 104(a0)",
 
-            "ld sp, 0(a1)",
-            "ld ra, 8(a1)",
-            "ld s0, 16(a1)",
-            "ld s1, 24(a1)",
-            "ld s2, 32(a1)",
-            "ld s3, 40(a1)",
-            "ld s4, 48(a1)",
-            "ld s5, 56(a1)",
-            "ld s6, 64(a1)",
-            "ld s7, 72(a1)",
-            "ld s8, 80(a1)",
-            "ld s9, 88(a1)",
-            "ld s10, 96(a1)",
-            "ld s11, 104(a1)",
+        "ld sp, 0(a1)",
+        "ld ra, 8(a1)",
+        "ld s0, 16(a1)",
+        "ld s1, 24(a1)",
+        "ld s2, 32(a1)",
+        "ld s3, 40(a1)",
+        "ld s4, 48(a1)",
+        "ld s5, 56(a1)",
+        "ld s6, 64(a1)",
+        "ld s7, 72(a1)",
+        "ld s8, 80(a1)",
+        "ld s9, 88(a1)",
+        "ld s10, 96(a1)",
+        "ld s11, 104(a1)",
 
-            "li a0, 0",
-            "li a1, 0",
+        "li a0, 0",
+        "li a1, 0",
 
-            "ret",
-            options(noreturn)
-        );
-    }
+        "ret",
+    );
 }
 
 const STACK_SIZE: usize = 1024 * 64;
@@ -126,7 +122,7 @@ pub fn alloc_stack() -> (Vec<u8>, usize) {
 
     let ptr = buf.as_mut_ptr() as usize;
     let top = ptr + STACK_SIZE;
-    let top = (top + 15) &! 15;
+    let top = top &! 15;
 
     (buf, top)
 }
