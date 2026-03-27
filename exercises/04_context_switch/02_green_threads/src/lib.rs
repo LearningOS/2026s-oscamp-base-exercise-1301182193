@@ -193,23 +193,22 @@ impl Scheduler {
     /// Find the next ready thread (starting from `current + 1` round-robin), mark current as `Ready` (if not `Finished`), mark next as `Running`, set `CURRENT_THREAD_ENTRY` if the next thread has an entry, then switch to it.
     fn schedule_next(&mut self) {
         let n = self.threads.len();
-        let mut next = None;
+        let mut next = self.current;
 
-        for i in 1..n {
+        for i in 1..=n {
             let idx = (self.current + i) % n;
             if self.threads[idx].state == ThreadState::Ready {
-                next = Some(idx);
+                next = idx;
                 break;
             }
         }
 
-        if next.is_none() {
-            return;
-        }
-
-        let next = next.unwrap();
         let current = self.current;
 
+
+        if current == next {
+            return;
+        }
 
         if self.threads[current].state != ThreadState::Finished {
             self.threads[current].state = ThreadState::Ready;
