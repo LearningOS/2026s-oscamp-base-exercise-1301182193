@@ -205,10 +205,6 @@ impl Scheduler {
 
         let current = self.current;
 
-        if next == current {
-            return;
-        }
-
 
         if self.threads[current].state != ThreadState::Finished {
             self.threads[current].state = ThreadState::Ready;
