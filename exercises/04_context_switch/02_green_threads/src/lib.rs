@@ -1,17 +1,22 @@
 //! # Green Thread Scheduler (riscv64)
 //!
 //! In this exercise, you build a simple cooperative (green) thread scheduler on top of context switching.
+//! 
 //! This crate is **riscv64 only**; run with the repo's normal flow (`./check.sh` / `oscamp`) or natively on riscv64.
 //!
 //! ## Key Concepts
 //! - Cooperative vs preemptive scheduling
+//! 协作式调度 和 抢占式调度
 //! - Thread state: `Ready`, `Running`, `Finished`
 //! - `yield_now()`: current thread voluntarily gives up the CPU
+//!                                 自愿的，主动的
 //! - Scheduler loop: pick next ready thread and switch to it
+//! 调度程序循环，： 挑选下一个就绪进程，切换到它
 //!
 //! ## Design
 //! Each green thread has its own stack and `TaskContext`. Threads call `yield_now()` to yield.
 //! The scheduler round-robins among ready threads. User entry is wrapped by `thread_wrapper`, which
+//!               轮询调度
 //! calls the entry then marks the thread `Finished` and switches back.
 
 #![cfg(target_arch = "riscv64")]
@@ -19,6 +24,7 @@
 use core::arch::naked_asm;
 
 /// Per-thread stack size. Slightly larger to avoid overflow under QEMU / test harness.
+///                                                 溢出                   测试工具
 const STACK_SIZE: usize = 1024 * 128;
 
 /// Task context (riscv64); layout must match `01_stack_coroutine::TaskContext` and the asm below.
@@ -137,7 +143,23 @@ impl Scheduler {
     ///    `sp` must be 16-byte aligned (e.g. `(stack_top - 16) & !15` to leave headroom).
     /// 3. Push a `GreenThread` with this context, state `Ready`, and `entry` stored for the wrapper to call.
     pub fn spawn(&mut self, entry: extern "C" fn()) {
-        todo!("alloc stack, init ctx with ra=thread_wrapper and aligned sp, push GreenThread(Ready, entry)")
+        let mut stack = vec![0u8; STACK_SIZE];
+        let ptr = stack.as_mut_ptr() as usize;
+
+        let mut sp = ptr + STACK_SIZE;
+        sp = sp &! 15;
+
+        let mut ctx = TaskContext::default();
+        ctx.sp = sp as u64;
+        ctx.ra = thread_wrapper as usize as u64;
+
+        self.threads.push(GreenThread {
+            ctx,
+            state: ThreadState::Ready,
+            _stack: Some(stack),
+            entry: Some(entry),
+        });
+
     }
 
     /// Run the scheduler until all threads (except the main one) are `Finished`.
@@ -146,12 +168,68 @@ impl Scheduler {
     /// 2. Loop: if all threads in `threads[1..]` are `Finished`, break; otherwise call `schedule_next()` (which may switch away and later return).
     /// 3. Clear `SCHEDULER` when done.
     pub fn run(&mut self) {
-        todo!("set SCHEDULER to self, loop until threads[1..] all Finished, call schedule_next, then clear SCHEDULER")
+        unsafe {
+            SCHEDULER = self as *mut _;
+
+        }
+
+        loop {
+            let all_done = self.threads[1..]
+                .iter()
+                .all(|t| t.state == ThreadState::Finished);
+
+            if all_done {
+                break;
+            }
+
+            self.schedule_next();
+        }
+
+        unsafe {
+            SCHEDULER = core::ptr::null_mut();
+        }
     }
 
     /// Find the next ready thread (starting from `current + 1` round-robin), mark current as `Ready` (if not `Finished`), mark next as `Running`, set `CURRENT_THREAD_ENTRY` if the next thread has an entry, then switch to it.
     fn schedule_next(&mut self) {
-        todo!("round-robin find next Ready, set current Ready (if not Finished), next Running, CURRENT_THREAD_ENTRY, then switch_context")
+        let n = self.threads.len();
+        let mut next = self.current;
+
+        for i in 1..=n {
+            let idx = (self.current + i) % n;
+            if self.threads[idx].state == ThreadState::Ready {
+                next = idx;
+                break;
+            }
+        }
+
+        let current = self.current;
+
+        if next == current {
+            return;
+        }
+
+
+        if self.threads[current].state != ThreadState::Finished {
+            self.threads[current].state = ThreadState::Ready;
+        }
+
+        self.threads[next].state = ThreadState::Running;
+
+        if let Some(entry) = self.threads[next].entry.take() {
+            unsafe {
+                CURRENT_THREAD_ENTRY = Some(entry);
+            }
+        }
+
+        self.current = next;
+
+        unsafe {
+            let old = &mut self.threads[current].ctx;
+            let new = &self.threads[next].ctx;
+            switch_context(old, new);        
+        }
+
     }
 }
 
