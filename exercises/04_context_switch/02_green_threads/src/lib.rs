@@ -195,7 +195,7 @@ impl Scheduler {
         let n = self.threads.len();
         let mut next = None;
 
-        for i in 1..=n {
+        for i in 1..n {
             let idx = (self.current + i) % n;
             if self.threads[idx].state == ThreadState::Ready {
                 next = Some(idx);
