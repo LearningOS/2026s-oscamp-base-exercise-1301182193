@@ -147,7 +147,7 @@ impl Scheduler {
         let ptr = stack.as_mut_ptr() as usize;
 
         let mut sp = ptr + STACK_SIZE;
-        sp = sp &! 15;
+        sp = (sp - 16) &! 15;
 
         let mut ctx = TaskContext::default();
         ctx.sp = sp as u64;
@@ -193,16 +193,21 @@ impl Scheduler {
     /// Find the next ready thread (starting from `current + 1` round-robin), mark current as `Ready` (if not `Finished`), mark next as `Running`, set `CURRENT_THREAD_ENTRY` if the next thread has an entry, then switch to it.
     fn schedule_next(&mut self) {
         let n = self.threads.len();
-        let mut next = self.current;
+        let mut next = None;
 
         for i in 1..=n {
             let idx = (self.current + i) % n;
             if self.threads[idx].state == ThreadState::Ready {
-                next = idx;
+                next = Some(idx);
                 break;
             }
         }
 
+        if next.is_none() {
+            return;
+        }
+
+        let next = next.unwrap();
         let current = self.current;
 
 
