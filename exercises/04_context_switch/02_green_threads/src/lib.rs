@@ -162,7 +162,6 @@ impl Scheduler {
     pub fn run(&mut self) {
         unsafe {
             SCHEDULER = self as *mut _;
-
         }
 
         loop {
@@ -178,7 +177,7 @@ impl Scheduler {
 
         }
         unsafe {
-            SCHEDULER = std::ptr::null_mut();
+            SCHEDULER = core::ptr::null_mut();
         }
     }
 
