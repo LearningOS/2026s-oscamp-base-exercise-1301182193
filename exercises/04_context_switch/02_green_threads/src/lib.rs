@@ -193,29 +193,40 @@ impl Scheduler {
     /// Find the next ready thread (starting from `current + 1` round-robin), mark current as `Ready` (if not `Finished`), mark next as `Running`, set `CURRENT_THREAD_ENTRY` if the next thread has an entry, then switch to it.
     fn schedule_next(&mut self) {
         let n = self.threads.len();
-        let mut next = self.current;
+        let current = self.current;
 
-        for i in 1..=n {
-            let idx = (self.current + i) % n;
+        let mut next = current;
+        let mut found = false;
+
+        // 找下一个 Ready（跳过 main=0）
+        for i in 1..n {
+            let idx = (current + i) % n;
+
+            if idx == 0 {
+                continue;
+            }
+
             if self.threads[idx].state == ThreadState::Ready {
                 next = idx;
+                found = true;
                 break;
             }
         }
 
-        let current = self.current;
-
-
-        if current == next {
+        // 没找到就不切换
+        if !found {
             return;
         }
 
+        // 当前线程状态更新
         if self.threads[current].state != ThreadState::Finished {
             self.threads[current].state = ThreadState::Ready;
         }
 
+        // 下一个线程
         self.threads[next].state = ThreadState::Running;
 
+        // 首次运行：设置入口函数
         if let Some(entry) = self.threads[next].entry.take() {
             unsafe {
                 CURRENT_THREAD_ENTRY = Some(entry);
@@ -227,9 +238,8 @@ impl Scheduler {
         unsafe {
             let old = &mut self.threads[current].ctx;
             let new = &self.threads[next].ctx;
-            switch_context(old, new);        
+            switch_context(old, new);
         }
-
     }
 }
 
