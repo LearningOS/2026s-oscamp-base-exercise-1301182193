@@ -198,13 +198,9 @@ impl Scheduler {
         let mut next = current;
         let mut found = false;
 
-        // 找下一个 Ready（跳过 main=0）
-        for i in 1..n {
+        // ✅ round-robin 找 Ready（包括 main）
+        for i in 1..=n {
             let idx = (current + i) % n;
-
-            if idx == 0 {
-                continue;
-            }
 
             if self.threads[idx].state == ThreadState::Ready {
                 next = idx;
@@ -213,20 +209,20 @@ impl Scheduler {
             }
         }
 
-        // 没找到就不切换
+        // ✅ 没有可运行线程
         if !found {
             return;
         }
 
-        // 当前线程状态更新
+        // ✅ 当前线程状态处理
         if self.threads[current].state != ThreadState::Finished {
             self.threads[current].state = ThreadState::Ready;
         }
 
-        // 下一个线程
+        // ✅ 下一个线程
         self.threads[next].state = ThreadState::Running;
 
-        // 首次运行：设置入口函数
+        // ✅ 首次运行：设置入口
         if let Some(entry) = self.threads[next].entry.take() {
             unsafe {
                 CURRENT_THREAD_ENTRY = Some(entry);
@@ -235,6 +231,7 @@ impl Scheduler {
 
         self.current = next;
 
+        // ✅ 上下文切换
         unsafe {
             let old = &mut self.threads[current].ctx;
             let new = &self.threads[next].ctx;
