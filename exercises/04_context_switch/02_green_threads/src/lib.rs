@@ -140,7 +140,7 @@ impl Scheduler {
         let mut stack = vec![0u8; STACK_SIZE];
         let mut sp = stack.as_mut_ptr() as usize + STACK_SIZE;
 
-        sp = (sp - 16) & ! 15;
+        sp = (sp) & ! 15;
 
         let mut ctx = TaskContext::default();
         ctx.sp = sp as u64;
