@@ -136,18 +136,12 @@ impl Scheduler {
         }
     }
 
-    /// Register a new green thread that will run `entry` when first scheduled.
-    ///
-    /// 1. Allocate a stack of `STACK_SIZE` bytes; compute `stack_top` (high address).
-    /// 2. Set up the context: `ra = thread_wrapper` so the first switch jumps to the wrapper;
-    ///    `sp` must be 16-byte aligned (e.g. `(stack_top - 16) & !15` to leave headroom).
-    /// 3. Push a `GreenThread` with this context, state `Ready`, and `entry` stored for the wrapper to call.
     pub fn spawn(&mut self, entry: extern "C" fn()) {
         let mut stack = vec![0u8; STACK_SIZE];
         let ptr = stack.as_mut_ptr() as usize;
 
         let mut sp = ptr + STACK_SIZE;
-        sp = (sp - 16) &! 15;
+        sp = (sp - 16) & !15;
 
         let mut ctx = TaskContext::default();
         ctx.sp = sp as u64;
@@ -159,18 +153,11 @@ impl Scheduler {
             _stack: Some(stack),
             entry: Some(entry),
         });
-
     }
 
-    /// Run the scheduler until all threads (except the main one) are `Finished`.
-    ///
-    /// 1. Set the global `SCHEDULER` pointer to `self` so that `yield_now` and `thread_finished` can call back.
-    /// 2. Loop: if all threads in `threads[1..]` are `Finished`, break; otherwise call `schedule_next()` (which may switch away and later return).
-    /// 3. Clear `SCHEDULER` when done.
     pub fn run(&mut self) {
         unsafe {
             SCHEDULER = self as *mut _;
-
         }
 
         loop {
@@ -190,7 +177,6 @@ impl Scheduler {
         }
     }
 
-    /// Find the next ready thread (starting from `current + 1` round-robin), mark current as `Ready` (if not `Finished`), mark next as `Running`, set `CURRENT_THREAD_ENTRY` if the next thread has an entry, then switch to it.
     fn schedule_next(&mut self) {
         let n = self.threads.len();
         let current = self.current;
@@ -198,9 +184,16 @@ impl Scheduler {
         let mut next = current;
         let mut found = false;
 
-        // ✅ round-robin 找 Ready（包括 main）
+        // 🔥 round-robin：必须允许切回 main（idx=0）
         for i in 1..=n {
             let idx = (current + i) % n;
+
+            if idx == 0 {
+                // ✅ main 可以作为 fallback
+                next = 0;
+                found = true;
+                break;
+            }
 
             if self.threads[idx].state == ThreadState::Ready {
                 next = idx;
@@ -209,20 +202,21 @@ impl Scheduler {
             }
         }
 
-        // ✅ 没有可运行线程
-        if !found {
+        if !found || next == current {
             return;
         }
 
-        // ✅ 当前线程状态处理
+        // 当前线程变 Ready（除非 Finished）
         if self.threads[current].state != ThreadState::Finished {
             self.threads[current].state = ThreadState::Ready;
         }
 
-        // ✅ 下一个线程
-        self.threads[next].state = ThreadState::Running;
+        // 下一个线程
+        if next != 0 {
+            self.threads[next].state = ThreadState::Running;
+        }
 
-        // ✅ 首次运行：设置入口
+        // 首次运行设置入口
         if let Some(entry) = self.threads[next].entry.take() {
             unsafe {
                 CURRENT_THREAD_ENTRY = Some(entry);
@@ -231,7 +225,6 @@ impl Scheduler {
 
         self.current = next;
 
-        // ✅ 上下文切换
         unsafe {
             let old = &mut self.threads[current].ctx;
             let new = &self.threads[next].ctx;
